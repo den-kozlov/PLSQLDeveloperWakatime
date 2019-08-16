@@ -1,8 +1,13 @@
 ﻿using System;
+using System.Collections;
+using System.Collections.Concurrent;
 using System.IO;
+using System.Net;
 using System.Reflection;
 using System.Runtime.InteropServices;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
+using System.Web.Script.Serialization;
 
 namespace WakaTime
 {
@@ -14,16 +19,12 @@ namespace WakaTime
         private const int PLUGIN_MENU_INDEX = 10;
         private const string PLUGIN_NAME = "Wakatime Plugin";
 
-        private static string _version = string.Empty;
-        private static string _editorVersion = string.Empty;
-
         private static WakaTime _instance;
-        private static WakaTimeConfigFile _wakaTimeConfigFile;
-        public static string ApiKey;
-        public static bool Debug;
+        public static ConfigFile config;
         static readonly PythonCliParameters PythonCliParameters = new PythonCliParameters();
         private static string _lastFile;
         DateTime _lastHeartbeat = DateTime.UtcNow.AddMinutes(-3);
+        private static readonly ConcurrentQueue<Heartbeat> HeartbeatQueue = new ConcurrentQueue<Heartbeat>();
 
         private static IdeCreateWindow createWindowCallback;
         private static IdeSetText setTextCallback;
@@ -33,15 +34,69 @@ namespace WakaTime
         private static IdeSetStatusMessage setStatusMessage;
 
         private int pluginId;
-        private static bool PythonAvailable = false;
         private static bool WakaTimeCliAvailable = false;
+
+        internal static IWebProxy GetProxy()
+        {
+            WebProxy proxy = null;
+
+            try
+            {
+                if (string.IsNullOrEmpty(config.Proxy))
+                {
+                    Logger.Debug("No proxy will be used. It's either not set or badly formatted.");
+                    return null;
+                }
+
+                var proxyStr = config.Proxy;
+
+                // Regex that matches proxy address with authentication
+                var regProxyWithAuth = new Regex(@"\s*(https?:\/\/)?([^\s:]+):([^\s:]+)@([^\s:]+):(\d+)\s*");
+                var match = regProxyWithAuth.Match(proxyStr);
+
+                if (match.Success)
+                {
+                    var username = match.Groups[2].Value;
+                    var password = match.Groups[3].Value;
+                    var address = match.Groups[4].Value;
+                    var port = match.Groups[5].Value;
+
+                    var credentials = new NetworkCredential(username, password);
+                    proxy = new WebProxy(string.Join(":", address, port), true, null, credentials);
+
+                    Logger.Debug("A proxy with authentication will be used.");
+                    return proxy;
+                }
+
+                // Regex that matches proxy address and port(no authentication)
+                var regProxy = new Regex(@"\s*(https?:\/\/)?([^\s@]+):(\d+)\s*");
+                match = regProxy.Match(proxyStr);
+
+                if (match.Success)
+                {
+                    var address = match.Groups[2].Value;
+                    var port = int.Parse(match.Groups[3].Value);
+
+                    proxy = new WebProxy(address, port);
+
+                    Logger.Debug("A proxy will be used.");
+                    return proxy;
+                }
+
+                Logger.Debug("No proxy will be used. It's either not set or badly formatted.");
+            }
+            catch (Exception ex)
+            {
+                Logger.Error("Exception while parsing the proxy string from WakaTime config file. No proxy will be used.", ex);
+            }
+
+            return proxy;
+        }
 
         private WakaTime(int id)
         {
             pluginId = id;
-            Version version = GetType().Assembly.GetName().Version;
-            _version = string.Format("{0}.{1}.{2}", version.Major, version.Minor, version.Build);
-            _wakaTimeConfigFile = new WakaTimeConfigFile();
+            config = new ConfigFile();
         }
 
         #region DLL exported API
@@ -93,52 +148,11 @@ namespace WakaTime
         {
             Logger.Info("OnActivate");
 
-            GetSettings();
+            Logger.Debug(string.Format("PL/SQL Developer version is {0}", formatPLSQLDeveloperVersion()));
 
             Task.Run(() =>
             {
-                try
-                {
-                    if (!PythonManager.IsPythonInstalled())
-                    {
-                        var url = PythonManager.PythonDownloadUrl;
-                        Downloader.DownloadPython(url, WakaTimeConstants.UserConfigDir);
-                    }
-                    PythonAvailable = true;
-                }
-                catch (Exception ex)
-                {
-                    Logger.Error("Error checking for Python", ex);
-                }
-
-            });
-            Task.Run(() =>
-            {
-                try
-                {
-                    setStatusMessage?.Invoke("Checking WakaTime Cli version");
-                    if (!DoesCliExist() || !IsCliLatestVersion())
-                    {
-                        string wakaDir = string.Format("{0}\\wakatime-master", WakaTimeConstants.UserConfigDir);
-                        try
-                        {
-                            Directory.Delete(wakaDir, true);
-                        }
-                        catch (Exception ex)
-                        {
-                            Logger.Error(string.Format("Unable to delete folder {0}", wakaDir), ex);
-                        }
-
-                        setStatusMessage?.Invoke("Updating WakaTime Cli");
-                        Downloader.DownloadCli(WakaTimeConstants.CliUrl, WakaTimeConstants.UserConfigDir);
-                    }
-                    WakaTimeCliAvailable = true;
-                }
-                catch (Exception ex)
-                {
-                    WakaTimeCliAvailable = false;
-                    Logger.Error("Error checking for WakaTime Cli", ex);
-                }
+                InitAsync();
             });
         }
 
@@ -199,6 +213,57 @@ namespace WakaTime
         {
             _instance.ShowConfigurationForm();
         }
+
+        internal static WebClient GetWebClient()
+        {
+            if (!ServicePointManager.SecurityProtocol.HasFlag(SecurityProtocolType.Tls12))
+            {
+                ServicePointManager.SecurityProtocol = ServicePointManager.SecurityProtocol | SecurityProtocolType.Tls12;
+            }
+            ServicePointManager.Expect100Continue = true;
+            return new WebClient{ Proxy = GetProxy()};
+        }
+
+        private static void InitAsync()
+        {
+            try
+            {
+                Logger.logLevel = config.logLevel;
+                WakaTimeConstants.EditorVersion = formatPLSQLDeveloperVersion();
+
+                // Make sure python is installed
+                if (!Dependencies.IsPythonInstalled())
+                {
+                    Dependencies.DownloadAndInstallPython();
+                }
+
+                if (!Dependencies.DoesCliExist() || !Dependencies.IsCliUpToDate())
+                {
+                    Dependencies.DownloadAndInstallCli();
+                }
+                WakaTimeCliAvailable = true;
+            }
+            catch (WebException ex)
+            {
+                Logger.Error("Are you behind a proxy? Try setting a proxy in WakaTime Settings with format https://user:pass@host:port. Exception Traceback:", ex);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error("Error detecting dependencies. Exception Traceback:", ex);
+            }
+        }
+        private static string formatPLSQLDeveloperVersion()
+        {
+            if (sysVersion == null)
+                return "";
+
+            int fullVer = sysVersion();
+            int buildVer = fullVer % 10;
+            int minorVer = fullVer % 100 - buildVer;
+            int majorVer = fullVer / 100;
+            return string.Format("{0}.{1}.{2}", majorVer, minorVer, buildVer);
+        }
+
         public string Name
         {
             get
@@ -207,15 +272,9 @@ namespace WakaTime
             }
 
         }
-        private static void GetSettings()
-        {
-            ApiKey = _wakaTimeConfigFile.ApiKey;
-            Debug = _wakaTimeConfigFile.Debug;
-        }
-
         private void HandleActivity(string fileName = null, string objectName = null, string schemaName = null, bool isWrite = false)
         {
-            if (!(PythonAvailable && WakaTimeCliAvailable))
+            if (!WakaTimeCliAvailable)
                 return;
         }
         private bool EnoughTimePassed()
@@ -223,50 +282,60 @@ namespace WakaTime
             return _lastHeartbeat < DateTime.UtcNow.AddMinutes(-1);
         }
 
-        public static void SendHeartbeat(string fileName, bool isWrite)
+        private static void ProcessHeartbeats()
         {
-            PythonCliParameters.Key = ApiKey;
-            PythonCliParameters.File = fileName;
-            PythonCliParameters.Plugin = string.Format("{0}/{1} {2}/{3}", WakaTimeConstants.EditorName, _editorVersion, WakaTimeConstants.PluginName, _version);
-            PythonCliParameters.IsWrite = isWrite;
-            //PythonCliParameters.Project = GetProjectName();
-
-            var pythonBinary = PythonManager.GetPython();
+            var pythonBinary = Dependencies.GetPython();
             if (pythonBinary != null)
             {
+                // get first heartbeat from queue
+                var gotOne = HeartbeatQueue.TryDequeue(out var heartbeat);
+                if (!gotOne)
+                    return;
+
+                // remove all extra heartbeats from queue
+                var extraHeartbeats = new ArrayList();
+                while (HeartbeatQueue.TryDequeue(out var h))
+                    extraHeartbeats.Add(new Heartbeat(h));
+                var hasExtraHeartbeats = extraHeartbeats.Count > 0;
+
+                PythonCliParameters.Key = config.ApiKey;
+                PythonCliParameters.Plugin =
+                    $"{WakaTimeConstants.EditorName}/{WakaTimeConstants.EditorVersion} {WakaTimeConstants.PluginName}/{WakaTimeConstants.PluginVersion}";
+                PythonCliParameters.File = heartbeat.entity;
+                PythonCliParameters.Time = heartbeat.timestamp;
+                PythonCliParameters.IsWrite = heartbeat.is_write;
+                PythonCliParameters.Project = heartbeat.project;
+                PythonCliParameters.HasExtraHeartbeats = hasExtraHeartbeats;
+
+                string extraHeartbeatsJson = null;
+                if (hasExtraHeartbeats)
+                    extraHeartbeatsJson = new JavaScriptSerializer().Serialize(extraHeartbeats);
+
                 var process = new RunProcess(pythonBinary, PythonCliParameters.ToArray());
-                if (Debug)
+                if (config.Debug)
                 {
-                    Logger.Debug(string.Format("[\"{0}\", \"{1}\"]", pythonBinary, string.Join("\", \"", PythonCliParameters.ToArray(true))));
-                    process.Run();
-                    Logger.Debug(string.Format("CLI STDOUT: {0}", process.Output));
-                    Logger.Debug(string.Format("CLI STDERR: {0}", process.Error));
+                    Logger.Debug(
+                        $"[\"{pythonBinary}\", \"{string.Join("\", \"", PythonCliParameters.ToArray(true))}\"]");
+                    process.Run(extraHeartbeatsJson);
+                    if (!string.IsNullOrEmpty(process.Output))
+                        Logger.Debug(process.Output);
+                    if (!string.IsNullOrEmpty(process.Error))
+                        Logger.Debug(process.Error);
                 }
                 else
-                    process.RunInBackground();
+                    process.RunInBackground(extraHeartbeatsJson);
+
+                if (!process.Success)
+                {
+                    Logger.Error("Could not send heartbeat.");
+                    if (!string.IsNullOrEmpty(process.Output))
+                        Logger.Error(process.Output);
+                    if (!string.IsNullOrEmpty(process.Error))
+                        Logger.Error(process.Error);
+                }
             }
             else
                 Logger.Error("Could not send heartbeat because python is not installed");
-        }
-
-        static bool DoesCliExist()
-        {
-            bool result = File.Exists(PythonCliParameters.Cli);
-            if (!result)
-            {
-                Logger.Debug(string.Format("WakaTime Cli wasn't found in expected location({0})", PythonCliParameters.Cli));
-            }
-            return result;
-        }
-        static bool IsCliLatestVersion()
-        {
-            var process = new RunProcess(PythonManager.GetPython(), PythonCliParameters.Cli, "--version");
-            process.Run();
-
-            var wakatimeVersion = WakaTimeConstants.CurrentWakaTimeCliVersion();
-
-            Logger.Debug(string.Format("Current WakaTime Cli version is {0}, latest version is {1}", process.Error.ToString(), wakatimeVersion.ToString()));
-            return process.Success && process.Error.Equals(wakatimeVersion);
         }
 
         private void ShowConfigurationForm()

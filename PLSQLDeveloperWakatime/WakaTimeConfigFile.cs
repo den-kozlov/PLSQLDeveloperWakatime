@@ -3,22 +3,22 @@ using System.Text;
 
 namespace WakaTime
 {
-    class WakaTimeConfigFile
+    public class ConfigFile
     {
-        internal string ApiKey { get; set; }
-        internal string Proxy { get; set; }
-        internal bool Debug { get; set; }
-        internal LogLevel logLevel { get; set; }
+        public string ApiKey { get; set; }
+        public string Proxy { get; set; }
+        public bool Debug { get; set; }
+        public LogLevel logLevel { get; set; }
 
         private readonly string _configFilepath;
 
-        internal WakaTimeConfigFile()
+        public ConfigFile()
         {
             _configFilepath = GetConfigFilePath();
             Read();
         }
 
-        internal void Read()
+        public void Read()
         {
             var ret = new StringBuilder(2083);
 
@@ -42,14 +42,14 @@ namespace WakaTime
             if (NativeMethods.GetPrivateProfileString("settings", "log_level", "none", ret, 2083, _configFilepath) > 0)
             {
                 LogLevel level;
-                if (LogLevel.TryParse(ret.ToString(), out level))
+                if (Enum.TryParse(ret.ToString(), ignoreCase: true, out level))
                     logLevel = level;
                 else
                     logLevel = LogLevel.None;
             }
         }
 
-        internal void Save()
+        public void Save()
         {
             if (!string.IsNullOrEmpty(ApiKey))
                 NativeMethods.WritePrivateProfileString("settings", "api_key", ApiKey.Trim(), _configFilepath);

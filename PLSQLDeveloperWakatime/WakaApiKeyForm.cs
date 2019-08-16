@@ -6,13 +6,13 @@ namespace WakaTime
 {
     public partial class WakaApiKeyForm : Form
     {
-        private readonly WakaTimeConfigFile _wakaTimeConfigFile;
+        private readonly ConfigFile _wakaTimeConfigFile;
 
         public WakaApiKeyForm()
         {
             InitializeComponent();
 
-            _wakaTimeConfigFile = new WakaTimeConfigFile();
+            _wakaTimeConfigFile = new ConfigFile();
         }
 
         private void WakaApiKeyForm_Load(object sender, EventArgs e)
@@ -41,9 +41,8 @@ namespace WakaTime
                 var parse = Guid.TryParse(txtAPIKey.Text.Trim(), out apiKey);
                 if (parse)
                 {
-                    _wakaTimeConfigFile.ApiKey = apiKey.ToString();
-                    _wakaTimeConfigFile.Save();
-                    WakaTime.ApiKey = apiKey.ToString();
+                    WakaTime.config.ApiKey = apiKey.ToString();
+                    WakaTime.config.Save();
                 }
                 else
                 {

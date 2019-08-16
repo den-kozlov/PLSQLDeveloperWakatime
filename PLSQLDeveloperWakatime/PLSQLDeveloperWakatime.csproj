@@ -63,6 +63,7 @@
     <Reference Include="System.Core" />
     <Reference Include="System.Drawing" />
     <Reference Include="System.IO.Compression.FileSystem" />
+    <Reference Include="System.Web.Extensions" />
     <Reference Include="System.Windows.Forms" />
     <Reference Include="System.Xaml" />
     <Reference Include="System.Xml.Linq" />
@@ -76,12 +77,12 @@
     <Reference Include="WindowsFormsIntegration" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="Downloader.cs" />
+    <Compile Include="Dependencies.cs" />
+    <Compile Include="Heartbeat.cs" />
     <Compile Include="Logger.cs" />
     <Compile Include="NativeMethods.cs" />
     <Compile Include="ProcessorArchitectureHelper.cs" />
     <Compile Include="PythonCliParameters.cs" />
-    <Compile Include="PythonManager.cs" />
     <Compile Include="RunProcess.cs" />
     <Compile Include="WakaApiKeyForm.cs">
       <SubType>Form</SubType>
