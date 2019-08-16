@@ -47,10 +47,13 @@ namespace WakaTime
                 if (!process.Success)
                     return null;
 
+                Logger.Debug(string.Format("Python found by Microsoft Register: {0}", fullPath));
+
                 return fullPath;
             }
-            catch 
+            catch (Exception ex)
             {
+                Logger.Error("GetPathFromMicrosoftRegister:", ex);
                 return null;
             }
         }
@@ -112,6 +115,8 @@ namespace WakaTime
                     if (!process.Success) continue;
                 }
                 catch { /*ignored*/ }
+
+                Logger.Debug(string.Format("Python found by Fixed Path: {0}", location));
 
                 return location;
             }
