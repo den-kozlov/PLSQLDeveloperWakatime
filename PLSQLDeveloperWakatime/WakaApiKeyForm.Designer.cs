@@ -33,6 +33,10 @@
             this.txtAPIKey = new System.Windows.Forms.TextBox();
             this.btnOK = new System.Windows.Forms.Button();
             this.lblInstructions = new System.Windows.Forms.LinkLabel();
+            this.txtProxy = new System.Windows.Forms.TextBox();
+            this.lblProxy = new System.Windows.Forms.Label();
+            this.lblLogLevel = new System.Windows.Forms.Label();
+            this.cbbLogLevel = new System.Windows.Forms.ComboBox();
             this.SuspendLayout();
             // 
             // lblAPIKey
@@ -57,7 +61,7 @@
             // 
             this.btnOK.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Bottom | System.Windows.Forms.AnchorStyles.Right)));
             this.btnOK.DialogResult = System.Windows.Forms.DialogResult.OK;
-            this.btnOK.Location = new System.Drawing.Point(266, 161);
+            this.btnOK.Location = new System.Drawing.Point(266, 213);
             this.btnOK.Name = "btnOK";
             this.btnOK.Size = new System.Drawing.Size(75, 23);
             this.btnOK.TabIndex = 2;
@@ -79,19 +83,64 @@
             this.lblInstructions.UseCompatibleTextRendering = true;
             this.lblInstructions.LinkClicked += new System.Windows.Forms.LinkLabelLinkClickedEventHandler(this.LblInstructions2_LinkClicked);
             // 
+            // txtProxy
+            // 
+            this.txtProxy.Anchor = ((System.Windows.Forms.AnchorStyles)(((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Left) 
+            | System.Windows.Forms.AnchorStyles.Right)));
+            this.txtProxy.Location = new System.Drawing.Point(27, 106);
+            this.txtProxy.Name = "txtProxy";
+            this.txtProxy.Size = new System.Drawing.Size(314, 20);
+            this.txtProxy.TabIndex = 4;
+            // 
+            // lblProxy
+            // 
+            this.lblProxy.AutoSize = true;
+            this.lblProxy.Location = new System.Drawing.Point(27, 87);
+            this.lblProxy.Name = "lblProxy";
+            this.lblProxy.Size = new System.Drawing.Size(216, 13);
+            this.lblProxy.TabIndex = 5;
+            this.lblProxy.Text = "Proxy (http[s]://[user:password@]server:port";
+            // 
+            // lblLogLevel
+            // 
+            this.lblLogLevel.AutoSize = true;
+            this.lblLogLevel.Location = new System.Drawing.Point(27, 143);
+            this.lblLogLevel.Name = "lblLogLevel";
+            this.lblLogLevel.Size = new System.Drawing.Size(70, 13);
+            this.lblLogLevel.TabIndex = 6;
+            this.lblLogLevel.Text = "Logging level";
+            // 
+            // cbbLogLevel
+            // 
+            this.cbbLogLevel.FormattingEnabled = true;
+            this.cbbLogLevel.Location = new System.Drawing.Point(27, 160);
+            this.cbbLogLevel.Name = "cbbLogLevel";
+            this.cbbLogLevel.Size = new System.Drawing.Size(138, 21);
+            this.cbbLogLevel.TabIndex = 7;
+            // 
             // WakaApiKeyForm
             // 
+            this.AcceptButton = this.btnOK;
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-            this.ClientSize = new System.Drawing.Size(353, 196);
+            this.ClientSize = new System.Drawing.Size(353, 248);
+            this.Controls.Add(this.cbbLogLevel);
+            this.Controls.Add(this.lblLogLevel);
+            this.Controls.Add(this.lblProxy);
+            this.Controls.Add(this.txtProxy);
             this.Controls.Add(this.lblInstructions);
             this.Controls.Add(this.btnOK);
             this.Controls.Add(this.txtAPIKey);
             this.Controls.Add(this.lblAPIKey);
             this.Icon = ((System.Drawing.Icon)(resources.GetObject("$this.Icon")));
+            this.MaximizeBox = false;
+            this.MinimizeBox = false;
+            this.MinimumSize = new System.Drawing.Size(369, 235);
             this.Name = "WakaApiKeyForm";
+            this.StartPosition = System.Windows.Forms.FormStartPosition.CenterScreen;
             this.Text = "WakaApiKeyForm";
             this.Load += new System.EventHandler(this.WakaApiKeyForm_Load);
+            this.Validating += new System.ComponentModel.CancelEventHandler(this.WakaApiKeyForm_Validating);
             this.ResumeLayout(false);
             this.PerformLayout();
 
@@ -103,5 +152,9 @@
         private System.Windows.Forms.TextBox txtAPIKey;
         private System.Windows.Forms.Button btnOK;
         private System.Windows.Forms.LinkLabel lblInstructions;
+        private System.Windows.Forms.TextBox txtProxy;
+        private System.Windows.Forms.Label lblProxy;
+        private System.Windows.Forms.Label lblLogLevel;
+        private System.Windows.Forms.ComboBox cbbLogLevel;
     }
 }

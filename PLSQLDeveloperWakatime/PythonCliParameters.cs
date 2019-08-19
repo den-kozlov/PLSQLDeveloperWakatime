@@ -7,7 +7,8 @@ namespace WakaTime
     {
         private static string Cli => Dependencies.CliLocation;
         public string Key { get; set; }
-        public string File { get; set; }
+        public string Entity { get; set; }
+        public string lineNo { get; set; }
         public string Time { get; set; }
         public string Plugin { get; set; }
         public bool IsWrite { get; set; }
@@ -22,7 +23,7 @@ namespace WakaTime
                 "--key",
                 obfuscate ? $"XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXX{Key.Substring(Key.Length - 4)}" : Key,
                 "--entity",
-                File,
+                Entity,
                 "--time",
                 Time,
                 "--plugin",
@@ -32,7 +33,11 @@ namespace WakaTime
             if (IsWrite)
                 parameters.Add("--write");
 
-            // ReSharper disable once InvertIf
+            if (!string.IsNullOrEmpty(lineNo))
+            {
+                parameters.Add("--lineno");
+                parameters.Add(lineNo);
+            }
             if (!string.IsNullOrEmpty(Project))
             {
                 parameters.Add("--project");

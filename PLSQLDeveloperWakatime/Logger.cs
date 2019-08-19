@@ -23,9 +23,16 @@ namespace WakaTime
             outStream = new StreamWriter(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile) + "\\plsqlwakatime.log", true);
         }
 
-        internal static void Debug(string message)
+        internal static void Debug(string message, params object[] parameters)
         {
-            Log(LogLevel.Debug, message);
+            if (parameters.Length > 0)
+            {
+                Log(LogLevel.Debug, String.Format(message, parameters));
+            }
+            else
+            {
+                Log(LogLevel.Debug, message);
+            }
         }
 
         internal static void Error(string message, Exception ex = null)

@@ -6,6 +6,8 @@ namespace WakaTime
 {
     public partial class WakaApiKeyForm : Form
     {
+        internal event EventHandler ConfigSaved;
+
         private readonly ConfigFile _wakaTimeConfigFile;
 
         public WakaApiKeyForm()
@@ -17,9 +19,16 @@ namespace WakaTime
 
         private void WakaApiKeyForm_Load(object sender, EventArgs e)
         {
+            cbbLogLevel.Items.Clear();
+            foreach (var ll in Enum.GetNames(typeof(LogLevel)))
+            {
+                cbbLogLevel.Items.Add(ll);
+            }
+            cbbLogLevel.SelectedItem = _wakaTimeConfigFile.logLevel.ToString();
             try
             {
                 txtAPIKey.Text = _wakaTimeConfigFile.ApiKey;
+                txtProxy.Text = _wakaTimeConfigFile.Proxy;
             }
             catch (Exception ex)
             {
@@ -41,8 +50,16 @@ namespace WakaTime
                 var parse = Guid.TryParse(txtAPIKey.Text.Trim(), out apiKey);
                 if (parse)
                 {
-                    WakaTime.config.ApiKey = apiKey.ToString();
-                    WakaTime.config.Save();
+                    _wakaTimeConfigFile.ApiKey = apiKey.ToString();
+                    _wakaTimeConfigFile.Proxy = txtProxy.Text;
+                    if (cbbLogLevel.SelectedIndex > -1)
+                    {
+                        _wakaTimeConfigFile.logLevel = (LogLevel)Enum.Parse(typeof(LogLevel), cbbLogLevel.SelectedItem.ToString());
+                    }
+                    else
+                        _wakaTimeConfigFile.logLevel = LogLevel.None;
+                    _wakaTimeConfigFile.Save();
+                    ConfigSaved?.Invoke(this, EventArgs.Empty);
                 }
                 else
                 {
@@ -54,6 +71,11 @@ namespace WakaTime
             {
                 MessageBox.Show(ex.Message);
             }
+
+        }
+
+        private void WakaApiKeyForm_Validating(object sender, System.ComponentModel.CancelEventArgs e)
+        {
 
         }
     }
