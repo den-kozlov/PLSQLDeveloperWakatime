@@ -23,16 +23,23 @@ namespace WakaTime
     delegate IntPtr IdeFilename();
     [return: MarshalAs(UnmanagedType.Bool)]
     delegate bool IdeSetText(string text);
+    [return: MarshalAs(UnmanagedType.Bool)]
+    delegate bool IdeGetWindowObject(out string ObjectType, out string ObjectOwner, out string ObjectName, out string SubObject);
+    delegate int IdeGetCursorX();
+    delegate int IdeGetCursorY();
 
     class CallbackIndexes
     {
-        public const int SYS_VERSION_CALLBACK = 1;
-        public const int IDE_GET_CONNECTION_INFO_CALLBACK = 12;
-        public const int IDE_GET_WINDOW_TYPE_CALLBACK = 14;
-        public const int IDE_CREATE_WINDOW_CALLBACK = 20;
-        public const int IDE_FILENAME_CALLBACK = 23;
-        public const int IDE_SET_TEXT_CALLBACK = 34;
-        public const int IDE_SET_STATUS_MESSAGE_CALLBACK = 35;
+        public const int SYS_VERSION = 1;
+        public const int IDE_GET_CONNECTION_INFO = 12;
+        public const int IDE_GET_WINDOW_TYPE = 14;
+        public const int IDE_CREATE_WINDOW = 20;
+        public const int IDE_FILENAME = 23;
+        public const int IDE_SET_TEXT = 34;
+        public const int IDE_SET_STATUS_MESSAGE = 35;
+        public const int IDE_GET_WINDOW_OBJECT = 110;
+        public const int IDE_GET_CURSOR_X = 141;
+        public const int IDE_GET_CURSOR_Y = 142;
     }
 
 }

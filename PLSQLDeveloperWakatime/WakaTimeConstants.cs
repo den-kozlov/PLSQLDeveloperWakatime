@@ -7,7 +7,7 @@ namespace WakaTime
 {
     internal static class WakaTimeConstants
     {
-        internal const string PluginName = "plsqldev-wakatime";
+        internal const string PluginName = "PLSQLDeveloper-wakatime";
         internal static string PluginVersion =
             $"{typeof(WakaTime).Assembly.GetName().Version.Major}.{typeof(WakaTime).Assembly.GetName().Version.Minor}.{typeof(WakaTime).Assembly.GetName().Version.Build}";
 

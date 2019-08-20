@@ -12,6 +12,7 @@ namespace WakaTime
     {
         private const string CurrentPythonVersion = "3.6.0";
         private static string PythonBinaryLocation { get; set; }
+        public static string  PythonUserDefinedLocation { get; set; }
         private static string PythonDownloadUrl
         {
             get
@@ -96,6 +97,16 @@ namespace WakaTime
 
         internal static string GetPython()
         {
+            if (!String.IsNullOrEmpty(PythonUserDefinedLocation))
+            {
+                Logger.Debug("Python location defined in config: {0}", PythonUserDefinedLocation);
+                return PythonUserDefinedLocation;
+            }
+            return AutoDetectPythonLocation();
+        }
+
+        internal static string AutoDetectPythonLocation()
+        {
             if (PythonBinaryLocation == null)
                 PythonBinaryLocation = GetEmbeddedPythonPath();
 
@@ -103,8 +114,8 @@ namespace WakaTime
                 PythonBinaryLocation = GetPythonPathFromMicrosoftRegistry();
 
             return PythonBinaryLocation ?? (PythonBinaryLocation = GetPythonPathFromFixedPath());
-        }
 
+        }
         internal static string GetPythonPathFromMicrosoftRegistry()
         {
             try
@@ -128,7 +139,7 @@ namespace WakaTime
                 if (!process.Success)
                     return null;
 
-                Logger.Debug($"Python found from Microsoft Registry: {fullPath}");
+                Logger.Debug("Python found from Microsoft Registry: {0}", fullPath);
 
                 return fullPath;
             }
@@ -159,7 +170,7 @@ namespace WakaTime
                 }
                 catch { /*ignored*/ }
 
-                Logger.Debug($"Python found by Fixed Path: {location}");
+                Logger.Debug("Python found by Fixed Path: {0}", location);
 
                 return location;
             }
@@ -178,7 +189,7 @@ namespace WakaTime
                 if (!process.Success)
                     return null;
 
-                Logger.Debug($"Python found from embedded location: {path}");
+                Logger.Debug("Python found from embedded location: {0}", path);
 
                 return path;
             }

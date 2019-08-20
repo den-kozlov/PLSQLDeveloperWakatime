@@ -20,14 +20,19 @@ namespace WakaTime
         private const int PLUGIN_MENU_INDEX = 10;
         private const string PLUGIN_NAME = "Wakatime Plugin";
 
-        private static WakaTime _instance;
+//        private static WakaTime _instance;
+        private static int pluginId;
         private static ConfigFile config;
         static readonly PythonCliParameters PythonCliParameters = new PythonCliParameters();
         private static string _lastFile;
-        DateTime _lastHeartbeat = DateTime.UtcNow.AddMinutes(-3);
+        private static int _lastLineNo;
+        private static int _lastColumnNo;
+        private static DateTime _lastHeartbeat = DateTime.UtcNow.AddMinutes(-3);
 
+        #region Callbacks
         private static readonly ConcurrentQueue<Heartbeat> HeartbeatQueue = new ConcurrentQueue<Heartbeat>();
-        private static readonly Timer Timer = new Timer();
+        private static readonly Timer heartbeatsTimer = new Timer();
+        private static readonly Timer lineTrackerTimer = new Timer();
         private const int HeartbeatFrequency = 2; // minutes        
 
         private static IdeCreateWindow createWindowCallback;
@@ -47,8 +52,11 @@ namespace WakaTime
             else
                 return "";
         }
+        private static IdeGetWindowObject ideGetWindowObject;
+        private static IdeGetCursorX ideGetCursorColumn;
+        private static IdeGetCursorY ideGetCursorLine;
+        #endregion
 
-        private int pluginId;
         private static bool WakaTimeCliAvailable = false;
 
         internal static IWebProxy GetProxy()
@@ -117,20 +125,18 @@ namespace WakaTime
             return new WebClient { Proxy = GetProxy() };
         }
 
-        private WakaTime(int id)
+        static WakaTime()
         {
-            pluginId = id;
             config = new ConfigFile();
+            config.Read();
+            Dependencies.PythonUserDefinedLocation = config.PythonBinaryLocation;
         }
 
         #region DLL exported API
         [DllExport("IdentifyPlugIn", CallingConvention = CallingConvention.Cdecl)]
         public static string IdentifyPlugIn(int id)
         {
-            if (_instance == null)
-            {
-                _instance = new WakaTime(id);
-            }
+            pluginId = id;
             return PLUGIN_NAME;
         }
 
@@ -139,26 +145,35 @@ namespace WakaTime
         {
             switch (index)
             {
-                case CallbackIndexes.SYS_VERSION_CALLBACK:
+                case CallbackIndexes.SYS_VERSION:
                     sysVersion = Marshal.GetDelegateForFunctionPointer<SysVersion>(function);
                     break;
-                case CallbackIndexes.IDE_CREATE_WINDOW_CALLBACK:
+                case CallbackIndexes.IDE_CREATE_WINDOW:
                     createWindowCallback = Marshal.GetDelegateForFunctionPointer<IdeCreateWindow>(function);
                     break;
-                case CallbackIndexes.IDE_SET_TEXT_CALLBACK:
+                case CallbackIndexes.IDE_SET_TEXT:
                     setTextCallback = Marshal.GetDelegateForFunctionPointer<IdeSetText>(function);
                     break;
-                case CallbackIndexes.IDE_GET_CONNECTION_INFO_CALLBACK:
+                case CallbackIndexes.IDE_GET_CONNECTION_INFO:
                     getConnectionInfo = Marshal.GetDelegateForFunctionPointer<IdeGetConnectionInfo>(function);
                     break;
-                case CallbackIndexes.IDE_GET_WINDOW_TYPE_CALLBACK:
+                case CallbackIndexes.IDE_GET_WINDOW_TYPE:
                     getWindowType = Marshal.GetDelegateForFunctionPointer<IdeGetWindowType>(function);
                     break;
-                case CallbackIndexes.IDE_SET_STATUS_MESSAGE_CALLBACK:
+                case CallbackIndexes.IDE_SET_STATUS_MESSAGE:
                     setStatusMessage = Marshal.GetDelegateForFunctionPointer<IdeSetStatusMessage>(function);
                     break;
-                case CallbackIndexes.IDE_FILENAME_CALLBACK:
+                case CallbackIndexes.IDE_FILENAME:
                     func_IdeFilename = Marshal.GetDelegateForFunctionPointer<IdeFilename>(function);
+                    break;
+                case CallbackIndexes.IDE_GET_WINDOW_OBJECT:
+                    ideGetWindowObject = Marshal.GetDelegateForFunctionPointer<IdeGetWindowObject>(function);
+                    break;
+                case CallbackIndexes.IDE_GET_CURSOR_X:
+                    ideGetCursorColumn = Marshal.GetDelegateForFunctionPointer<IdeGetCursorX>(function);
+                    break;
+                case CallbackIndexes.IDE_GET_CURSOR_Y:
+                    ideGetCursorLine = Marshal.GetDelegateForFunctionPointer<IdeGetCursorY>(function);
                     break;
             }
         }
@@ -188,12 +203,25 @@ namespace WakaTime
             var type = (WindowType)getWindowType?.Invoke();
             if (type != WindowType.wtProcEdit)
                 return;
-        }
-
-        [DllExport("OnWindowCreated", CallingConvention = CallingConvention.Cdecl)]
-        public static void OnWindowCreated(int windowType)
-        {
-
+            string fileName = ideFilename();
+            if (!String.IsNullOrEmpty(fileName))
+            {
+                Logger.Debug("OnWindowChange: fileName={0}", fileName);
+                HandleActivity(fileName: fileName);
+            } 
+            else
+            {
+                string objectName;
+                string objectType;
+                string objectSchema;
+                string subobjectName;
+                if (ideGetWindowObject(ObjectType: out objectType, ObjectOwner: out objectSchema, ObjectName: out objectName, SubObject: out subobjectName ))
+                {
+                    Logger.Debug("OnWindowChange: objectType={0}, objectOwner={1}, objectName={2}, subObject={3}", objectType, objectSchema, objectName, subobjectName);
+                    HandleActivity(fileName: null, objectName: objectName, schemaName: objectSchema, lineNo: null, isWrite: false);
+                }
+            }
+            
         }
 
         [DllExport("BeforeExecuteWindow", CallingConvention = CallingConvention.Cdecl)]
@@ -202,10 +230,16 @@ namespace WakaTime
         {
             string fileName = ideFilename();
             Logger.Debug("BeforeExecuteWindow, windowType={0}, fileName={1}", windowType, fileName);
-            if (!String.IsNullOrEmpty(fileName))
+            if (!String.IsNullOrEmpty(fileName) && WindowType.wtProcEdit == (WindowType)windowType)
             {
-                _instance.HandleActivity(fileName: fileName, isWrite: true);
+                // compilation is treated as file write
+                HandleActivity(fileName: fileName, lineNo: ideGetCursorLine?.Invoke(), isWrite: true);
             }
+            else if (WindowType.wtSQL == (WindowType)windowType)
+            {
+                HandleActivity(fileName: "UnknownQuery.sql");
+            }
+
             return true;
         }
 
@@ -224,13 +258,21 @@ namespace WakaTime
         [DllExport("OnFileLoaded", CallingConvention = CallingConvention.Cdecl)]
         public static void OnFileLoaded(int windowType, int mode)
         {
-
+            string fileName = ideFilename();
+            if (!String.IsNullOrEmpty(fileName) && WindowType.wtProcEdit == (WindowType)windowType)
+            {
+                HandleActivity(fileName: fileName, lineNo: ideGetCursorLine?.Invoke(), isWrite: false);
+            }
         }
-        
+
         [DllExport("OnFileSaved", CallingConvention = CallingConvention.Cdecl)]
         public static void OnFileSaved(int windowType, int mode)
         {
-
+            string fileName = ideFilename();
+            if (!String.IsNullOrEmpty(fileName) && WindowType.wtProcEdit == (WindowType)windowType)
+            {
+                HandleActivity(fileName: fileName, lineNo: ideGetCursorLine?.Invoke(), isWrite: true);
+            }
         }
 
         [DllExport("About", CallingConvention = CallingConvention.Cdecl)]
@@ -242,17 +284,21 @@ namespace WakaTime
         [DllExport("Configure", CallingConvention = CallingConvention.Cdecl)]
         public static void Configure()
         {
-            _instance.ShowConfigurationForm();
+            ShowConfigurationForm();
         }
         #endregion
         
         private static void CleanUp()
         {
-            if (Timer == null) return;
+            if (heartbeatsTimer == null) return;
 
-            Timer.Stop();
-            Timer.Elapsed -= ProcessHeartbeats;
-            Timer.Dispose();
+            heartbeatsTimer.Stop();
+            heartbeatsTimer.Elapsed -= ProcessHeartbeats;
+            heartbeatsTimer.Dispose();
+
+            lineTrackerTimer.Stop();
+            lineTrackerTimer.Elapsed -= TrackCurrentEditorLine;
+            lineTrackerTimer.Dispose();
 
             // make sure the queue is empty	
             ProcessHeartbeats();
@@ -276,9 +322,13 @@ namespace WakaTime
                 }
                 WakaTimeCliAvailable = true;
 
-                Timer.Interval = 1000 * 8;
-                Timer.Elapsed += ProcessHeartbeats;
-                Timer.Start();
+                heartbeatsTimer.Interval = 1000 * 8;
+                heartbeatsTimer.Elapsed += ProcessHeartbeats;
+                heartbeatsTimer.Start();
+
+                //lineTrackerTimer.Interval = 1000 * 10;
+                //lineTrackerTimer.Elapsed += TrackCurrentEditorLine;
+                //lineTrackerTimer.Start();
             }
             catch (WebException ex)
             {
@@ -309,6 +359,21 @@ namespace WakaTime
             }
 
         }
+        private static void TrackCurrentEditorLine(object sender, ElapsedEventArgs e)
+        {
+            if (ideGetCursorLine != null && ideGetCursorColumn != null)
+            {
+                int lineNo = ideGetCursorLine();
+                int columnNo = ideGetCursorColumn();
+                if (_lastLineNo != lineNo || _lastColumnNo != columnNo)
+                {
+//                    OnWindowChange();
+                    _lastColumnNo = columnNo;
+                    _lastLineNo = lineNo;
+                }
+            }
+        }
+
         private static void ProcessHeartbeats(object sender, ElapsedEventArgs e)
         {
             Task.Run(() =>
@@ -317,7 +382,7 @@ namespace WakaTime
             });
         }
 
-        private void HandleActivity(string fileName = null, string objectName = null, string schemaName = null, int? lineNo = null, bool isWrite = false)
+        private static void HandleActivity(string fileName = null, string objectName = null, string schemaName = null, int? lineNo = null, bool isWrite = false)
         {
             if (!WakaTimeCliAvailable)
                 return;
@@ -352,10 +417,6 @@ namespace WakaTime
             var seconds = Convert.ToInt64(Math.Floor(timestamp.TotalSeconds));
             var milliseconds = timestamp.ToString("ffffff");
             return $"{seconds}.{milliseconds}";
-        }
-        private bool EnoughTimePassed()
-        {
-            return _lastHeartbeat < DateTime.UtcNow.AddMinutes(-1);
         }
 
         private static void ProcessHeartbeats()
@@ -414,7 +475,7 @@ namespace WakaTime
             else
                 Logger.Error("Could not send heartbeat because python is not installed");
         }
-        private bool EnoughTimePassed(DateTime now)
+        private static bool EnoughTimePassed(DateTime now)
         {
             return _lastHeartbeat < now.AddMinutes(-1 * HeartbeatFrequency);
         }
@@ -422,9 +483,10 @@ namespace WakaTime
         private static void SettingsFormOnConfigSaved(object sender, EventArgs eventArgs)
         {
             config.Read();
+            Dependencies.PythonUserDefinedLocation = config.PythonBinaryLocation;
         }
 
-        private void ShowConfigurationForm()
+        private static void ShowConfigurationForm()
         {
             var form = new WakaApiKeyForm();
             form.ConfigSaved += SettingsFormOnConfigSaved;

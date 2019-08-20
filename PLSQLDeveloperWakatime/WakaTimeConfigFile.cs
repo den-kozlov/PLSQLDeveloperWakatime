@@ -11,7 +11,7 @@ namespace WakaTime
             get { return logLevel == LogLevel.Debug; }
         }
         public LogLevel logLevel { get; set; }
-        public string PythonBinaries { get; set; }
+        public string PythonBinaryLocation { get; set; }
 
         private readonly string _configFilepath;
 
@@ -33,7 +33,7 @@ namespace WakaTime
                 ? ret.ToString()
                 : string.Empty;
 
-            PythonBinaries = NativeMethods.GetPrivateProfileString("settings", "python_location", "", ret, 2083, _configFilepath) > 0
+            PythonBinaryLocation = NativeMethods.GetPrivateProfileString("settings", "python_location", "", ret, 2083, _configFilepath) > 0
                 ? ret.ToString()
                 : string.Empty;
             // ReSharper disable once InvertIf
@@ -52,6 +52,7 @@ namespace WakaTime
             if (!string.IsNullOrEmpty(ApiKey))
                 NativeMethods.WritePrivateProfileString("settings", "api_key", ApiKey.Trim(), _configFilepath);
 
+            NativeMethods.WritePrivateProfileString("settings", "python_location", PythonBinaryLocation.Trim(), _configFilepath);
             NativeMethods.WritePrivateProfileString("settings", "proxy", Proxy.Trim(), _configFilepath);
             NativeMethods.WritePrivateProfileString("settings", "log_level", logLevel.ToString().ToLower(), _configFilepath);
         }
